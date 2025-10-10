@@ -33,12 +33,12 @@ tft.fill_screen( tft.color565( 255, 0, 0 ) ) # Fills the entire screen with red
 * **tearing_effect ( on = True )** - Activate "Tearing effect"
 * **idle_mode ( on = True )** - Enables or disables idle mode on display.
 * **scroll ( delay = 5 )** - Scrolling on the screen at a given speed.
-* **show ( )** - Displays the contents of the buffer on the screen
+* **show ( )** - Displays the contents of the buffer on the screen ( st7789_spi_fb only )
 
 ## Image functions:
 * **draw_raw_image ( filename, x, y, width, height )** - Draw RAW image (RGB565 format) on display
 * **draw_bmp ( filename, x = 0, y = 0 )** - Draw BMP image on display
-* **rgb ( red, green, blue )** - Convert 8,8,8 bits RGB to 16 bits
+* **color565 ( red, green, blue )** - Convert 8,8,8 bits RGB to 16 bits
 
 ## Text functions:
 * **set_font ( font )** - Set font for text
