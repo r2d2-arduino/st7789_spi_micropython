@@ -1,5 +1,5 @@
 """
-ST7789_SPI_FB v 0.1.6
+ST7789_SPI_FB v 0.1.7
 Display driver for ST7789 (with Framebuffer)
 
 Display: ST7789
@@ -13,30 +13,40 @@ MIT License
 Author: Arthur Derkach 
 """
 
-from machine import Pin
+from machine import Pin, PWM
 from time import sleep_ms
 from framebuf import FrameBuffer, RGB565
+from struct import pack
 
-class ST7789_SPI_FB(FrameBuffer):
+class ST7789_SPI_FB( FrameBuffer ):
     
-    def __init__(self, spi, cs_pin, dc_pin, rst_pin, width = 240, height = 320,
-                 offset_x = 0, offset_y = 0):
+    def __init__( self, spi, cs_pin, dc_pin, rst_pin, blk_pin = None,
+                    width = 240, height = 320, offset_x = 0, offset_y = 0 ):
         """ Constructor
         Args
         spi  (object): SPI
-        cs_pin  (int): CS pin number (Chip Select)
-        dc_pin  (int): DC pin number (command/parameter mode)
-        rst_pin (int): RST pin number (Reset)
+        cs_pin  (int): Chip Select pin number
+        dc_pin  (int): Data/Command pin number
+        rst_pin (int): Reset pin number 
+        blk_pin (int): Backlight pin number
         width   (int): Screen width in pixels (less)
         height  (int): Screen height in pixels
         offset_x(int): Offset X
-        offset_y(int): Offset Y        
+        offset_y(int): Offset Y
         """        
         self.spi = spi
         self.cs  = Pin(cs_pin, Pin.OUT, value = 1)
         self.dc  = Pin(dc_pin, Pin.OUT, value = 0) 
         self.rst = Pin(rst_pin, Pin.OUT, value = 1)
+        self.blk = None
         
+        if blk_pin is not None:
+            self.blk = Pin(blk_pin, Pin.OUT, value = 1)
+            
+            self.blk_pwm = PWM(self.blk)
+            self.blk_pwm.freq( 2000 )
+            self.blk_pwm.duty( 1023 )
+
         self.rotation = 0
         
         self.width  = width
@@ -50,31 +60,32 @@ class ST7789_SPI_FB(FrameBuffer):
         # Buffer initialization
         self.buffsize = width * height * 2
         self.buffer = bytearray( self.buffsize )
+        
         super().__init__( self.buffer, self.width, self.height, RGB565 )        
         
         self.init()
 
-    def write_command(self, cmd):
+    def write_command( self, cmd ):
         """ Sending a command to the display
         Args
         cmd (int): Command number, example: 0x2E
         """        
         self.dc.value(0)  # Устанавливаем DC в командный режим
         self.cs.value(0)
-        self.spi.write(bytes([cmd]))
+        self.spi.write( bytes([cmd]) )
         self.cs.value(1)
 
-    def write_data(self, data):
+    def write_data( self, data ):
         """ Sending data to the display
         Args
         data (int): Data byte, example: 0xF8
         """        
         self.dc.value(1)  
         self.cs.value(0)
-        self.spi.write(data)
+        self.spi.write( data )
         self.cs.value(1)
 
-    def init(self):
+    def init( self ):
         """ Initial display settings """
         self.reset()
 
@@ -90,6 +101,7 @@ class ST7789_SPI_FB(FrameBuffer):
         self.write_command(0x20)  # Inversion OFF
         
         self.set_rotation( 0 ) # Sreen position - 0 degree
+        self.invert_display(False) # inversion off
         
         self.write_command(0x29)  # Display ON
         
@@ -100,7 +112,7 @@ class ST7789_SPI_FB(FrameBuffer):
         self.rst.value(1)
         sleep_ms(120)    
     
-    def set_rotation(self, rotation = 0):
+    def set_rotation( self, rotation = 0 ):
         """
         Set orientation of Display
         Params
@@ -137,7 +149,7 @@ class ST7789_SPI_FB(FrameBuffer):
             
             super().__init__(self.buffer, self.width, self.height, RGB565)
 
-    def memory_access_control(self, my = 0, mx = 0, mv = 0, ml = 0, bgr = 0, mh = 0):
+    def memory_access_control( self, my = 0, mx = 0, mv = 0, ml = 0, bgr = 0, mh = 0 ):
         """ MADCTL. This command defines read/write scanning direction of frame memory. """
         self.write_command(0x36)
         data =  0
@@ -152,7 +164,7 @@ class ST7789_SPI_FB(FrameBuffer):
         
     """ Dispay functions """
 
-    def invert_display(self, on = True):
+    def invert_display( self, on = True ):
         """ Enables or disables color inversion on the display.
         Args
         on (bool): True = Enable inversion, False = Disable inversion
@@ -162,7 +174,7 @@ class ST7789_SPI_FB(FrameBuffer):
         else:
             self.write_command(0x20)
 
-    def idle_mode(self, on = True):
+    def idle_mode( self, on = True ):
         """ Enables or disables idle mode on the display.
         Args
         on (bool): True = Enable idle mode, False = Disable idle mode
@@ -172,7 +184,7 @@ class ST7789_SPI_FB(FrameBuffer):
         else:
             self.write_command(0x38)
 
-    def set_adaptive_brightness(self, mode = 0, ecnhctrl = 0, enchance = 0):
+    def set_adaptive_brightness( self, mode = 0, ecnhctrl = 0, enchance = 0 ):
         """ Set adaptive brightness
         Args
         mode (int):
@@ -198,7 +210,7 @@ class ST7789_SPI_FB(FrameBuffer):
         else:
             print('Error value in def set_adaptive_brightness')
             
-    def vert_scroll(self, top_fix: int, scroll_height: int, bot_fix: int):
+    def vert_scroll( self, top_fix: int, scroll_height: int, bot_fix: int ):
         """ Vertical scroll settings
         Args
         top_fix (int): Top fixed rows
@@ -225,7 +237,7 @@ class ST7789_SPI_FB(FrameBuffer):
         else:
             print('Incorrect sum in vertical scroll ', sum, ' <> ', screen_height)
             
-    def vert_scroll_start_address(self, start = 0):
+    def vert_scroll_start_address( self, start = 0 ):
         """ Set vertical scroll start address, and run scrolling
         Args
         start (int): start row        
@@ -233,7 +245,7 @@ class ST7789_SPI_FB(FrameBuffer):
         self.write_command(0x37)
         self.write_data(bytearray([(start >> 8) & 0xFF, start & 0xFF]))
         
-    def scroll(self, delay = 5):
+    def scroll( self, delay = 5 ):
         """ Scrolling on the screen at a given speed.
         Args
         delay (int): Delay between scrolling actions
@@ -246,7 +258,7 @@ class ST7789_SPI_FB(FrameBuffer):
             self.vert_scroll_start_address(y + 1)
             sleep_ms(delay)        
         
-    def tearing_effect(self, on = True):
+    def tearing_effect( self, on = True ):
         """ Activate "Tearing effect"
         Args
         on (bool): True = Enable effect, False = Disable effect
@@ -256,10 +268,50 @@ class ST7789_SPI_FB(FrameBuffer):
         else:
             self.write_command(0x34)
 
+    def set_backlight ( self, duty = 1023 ):
+        """ Set Backlight PWM Pin
+        Args
+        duty (int): Duty value: 0..1023
+        """
+        if self.blk is not None:
+            if 0 <= duty < 1024:
+                self.blk_pwm.duty(duty)
+            else:
+                print("Duty value out of range: 0..1023")
+
+    @micropython.viper
+    def set_window( self, x0:int, y0:int, x1:int, y1:int ):
+        """ Sets the starting position and the area of drawing on the display
+        Args
+        x0 (int): Start X position  ________
+        y0 (int): Start Y position  |s---> |
+        x1 (int): End X position    ||     |    
+        y1 (int): End Y position    |v____e|  
+        """
+        offx = int( self.offset_x )
+        offy = int( self.offset_y )
+        
+        dc = self.dc
+        spi = self.spi
+        
+        dc.value( 0 ) # command mode
+        spi.write( b'\x2a' )
+        dc.value( 1 ) # data mode
+        spi.write( pack( ">HH", x0 + offx, x1 + offx ) )
+        
+        dc.value( 0 ) # command mode
+        spi.write( b'\x2b' )
+        dc.value( 1 ) # data mode
+        spi.write( pack( ">HH", y0 + offy, y1 + offy ) )
+        
+        dc.value( 0 ) # command mode
+        spi.write( b'\x2c' )
+        dc.value( 1 )
+
     """ IMAGE AREA """
     
     @micropython.viper
-    def draw_raw_image(self, filename, x:int, y:int, width:int, height:int):
+    def draw_raw_image( self, filename, x:int, y:int, width:int, height:int ):
         """ Draw RAW image (RGB565 format) on display
         Args
         filename (string): filename of image, example: "rain.bmp"
@@ -283,7 +335,7 @@ class ST7789_SPI_FB(FrameBuffer):
                     col += 1
 
         
-    def draw_bmp(self, filename, x = 0, y = 0):
+    def draw_bmp( self, filename, x = 0, y = 0 ):
         """ Draw BMP image on display
         Args
         filename (string): filename of image, example: "rain.bmp"
@@ -330,13 +382,13 @@ class ST7789_SPI_FB(FrameBuffer):
         offset (int): Internal byte offset of image-file
         rowsize (int): Internal byte rowsize of image-file        
         """
-        buffer = ptr8(self.buffer)
+        buffer = ptr16(self.buffer)
         screen_width = int(self.width)
-        buffsize = int(self.buffsize)
-        main_offset = buffsize - (y * screen_width + frameWidth + x) * 2
+        buffsize = int(self.buffsize) // 2
+        main_offset = buffsize - y * screen_width - frameWidth - x
         
         for row in range(frameHeight):
-            buff_offset = main_offset - row * screen_width * 2
+            buff_offset = main_offset - row * screen_width
             # Start position of new row in image-file
             pos = offset + row * rowsize
                                     
@@ -344,30 +396,27 @@ class ST7789_SPI_FB(FrameBuffer):
                 f.seek(pos)
             
             # Reading one row from image-file
-            bgr_row = f.read(3 * frameWidth)
-            image_buffer = ptr8(bgr_row)
+            bgr_row = f.read( frameWidth * 3 )
+            image_buffer = ptr8( bgr_row )
             
-            for col in range(frameWidth):
+            for col in range( frameWidth ):
                 #Getting color bytes
                 red   = image_buffer[ col * 3     ]
                 green = image_buffer[ col * 3 + 1 ]
                 blue  = image_buffer[ col * 3 + 2 ]
                 
-                # Sending new bit-masks directly to registers
-                buffer[buff_offset + col * 2    ] = (blue & 0xF8 ) | ( green & 0xFC ) >> 5  # color hi
-                buffer[buff_offset + col * 2 + 1] = (green & 0x1C ) << 3 | red >> 3  # color low
-
+                buffer[ buff_offset + col ] = (green & 0x1C) << 11 |  ((red & 0xF8) << 5 | (blue & 0xF8)) | (green & 0xE0) >> 5
         
     """ TEXT AREA """
         
-    def set_font(self, font):
+    def set_font( self, font ):
         """ Set font for text
         Args
         font (module): Font module generated by font_to_py.py
         """
         self.font = font
         
-    def draw_text(self, text, x, y, color):
+    def draw_text( self, text, x, y, color ):
         """ Draw text on display
         Args
         x (int) : Start X position
@@ -410,7 +459,7 @@ class ST7789_SPI_FB(FrameBuffer):
             x += glyph_width              
                 
     @micropython.viper
-    def draw_bitmap(self, bitmap, x:int, y:int, color:int):
+    def draw_bitmap( self, bitmap, x:int, y:int, color:int ):
         """ Draw one bitmap (glyph) on display
         Args
         bitmap (tuple) : Bitmap data [data, height, width]
@@ -464,38 +513,19 @@ class ST7789_SPI_FB(FrameBuffer):
                 
                 bit_len += 8
                 i += 1
-        
+    
+    
     @staticmethod
-    def color565(red, green, blue):
+    @micropython.viper
+    def color565( red:int, green:int, blue:int ) -> int:
         """ Convert 8,8,8 bits RGB to 16 bits  """
         return ( (green & 0x1c) << 11 | (blue & 0xf8) << 5 | (red & 0xf8) | (green & 0xe0) >> 5 )
 
-    def show(self):
+    def show( self ):
         ''' Displays the contents of the buffer on the screen '''
         self.cs.value(0)
         
-        x0 = self.offset_x
-        y0 = self.offset_y        
-        x1 = self.offset_x + self.width - 1
-        y1 = self.offset_y + self.height - 1
-        
-        dc = self.dc
-        spi = self.spi
-        
-        dc.value(0) # command mode
-        spi.write(b'\x2a')
-        dc.value(1) # data mode
-        spi.write(bytearray([(x0 >> 8) & 0xff, x0 & 0xff, (x1 >> 8) & 0xff, x1 & 0xff]))
-        
-        dc.value(0) # command mode
-        spi.write(b'\x2b')
-        dc.value(1) # data mode
-        spi.write(bytearray([(y0 >> 8) & 0xff, y0 & 0xff, (y1 >> 8) & 0xff, y1 & 0xff]))
-        
-        dc.value(0) # command mode
-        spi.write(b'\x2c') # Memory write
-        dc.value(1) # data mode 
-        spi.write( memoryview(self.buffer) )
+        self.set_window( 0, 0, self.width - 1, self.height - 1)
+        self.spi.write( self.buffer )
         
         self.cs.value(1)
-        

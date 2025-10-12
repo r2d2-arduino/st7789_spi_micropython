@@ -2,16 +2,19 @@ from machine import SPI
 from st7789_spi import ST7789_SPI
 from bitmaps import rain
 
+# For Esp32:    sck=Pin(18), mosi=Pin(23), miso=Pin(19)
+# For Esp32-S2: sck=Pin(36), mosi=Pin(35), miso=Pin(37)
+# If the display doesn't work: try changing the polarity and phase to 0
 spi = SPI( 2, baudrate = 20_000_000, polarity = 1, phase = 1 )
-# If it doesn't work: try changing the polarity and phase to 0
 
 # Set pins here
-cs_pin  = 1
-dc_pin  = 2
-rst_pin = 4
+CS_PIN  = 1
+DC_PIN  = 2
+RST_PIN = 4
+BLK_PIN = 6 # Set to None if the display doesn't have a backlight pin
 
-tft = ST7789_SPI( spi, cs_pin, dc_pin,  rst_pin, height = 320, width = 240)
-tft.invert_display( True ) # If it doesn't work correctly: change to False
+tft = ST7789_SPI( spi, CS_PIN, DC_PIN,  RST_PIN, BLK_PIN, height = 320, width = 240)
+#tft.invert_display( True ) # If the display doesn't work correctly: Try to set inversion
 
 SCREEN_WIDTH  = tft.width
 SCREEN_HEIGHT = tft.height

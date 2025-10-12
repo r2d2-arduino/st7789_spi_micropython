@@ -2,16 +2,19 @@ from machine import SPI
 from st7789_spi import ST7789_SPI
 import LibreBodoni24 as bigFont
 
+# For Esp32:    sck=Pin(18), mosi=Pin(23), miso=Pin(19)
+# For Esp32-S2: sck=Pin(36), mosi=Pin(35), miso=Pin(37)
+# If the display doesn't work: try changing the polarity and phase to 0
 spi = SPI( 2, baudrate = 20_000_000, polarity = 1, phase = 1 )
-# If it doesn't work: try changing the polarity and phase to 0
 
 # Set pins here
-cs_pin  = 1
-dc_pin  = 2
-rst_pin = 4
+CS_PIN  = 1
+DC_PIN  = 2
+RST_PIN = 4
+BLK_PIN = 6 # Set to None if the display doesn't have a backlight pin
 
-tft = ST7789_SPI( spi, cs_pin, dc_pin,  rst_pin)
-tft.invert_display( True ) # If it doesn't work correctly: change to False
+tft = ST7789_SPI( spi, CS_PIN, DC_PIN,  RST_PIN, BLK_PIN, height = 320, width = 240)
+#tft.invert_display( True ) # If the display doesn't work correctly: Try setting up inversion
 
 COLOR_BLACK   = tft.color565( 0, 0, 0 )
 COLOR_BLUE    = tft.color565( 0, 0, 255 )
@@ -36,6 +39,6 @@ text = " Lorem ipsum dolor sit amet,\n consectetur adipiscing elit, sed do eiusm
         in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.\n Excepteur sint occaecat cupidatat non proident, \
         sunt in culpa qui officia deserunt mollit anim id est laborum."
 
-tft.draw_text(text, 10, 20, COLOR_WHITE, COLOR_BLACK)
+tft.draw_text(text, 10, 20, COLOR_YELLOW, COLOR_BLACK)
 
 print((time.ticks_ms()-start), 'ms')
