@@ -1,23 +1,20 @@
-from machine import SPI, Pin
 from st7789_spi_fb import ST7789_SPI_FB
+from pio_spi import PIO_SPI
 import resources.LibreBodoni24 as bigFont
 from time import sleep_ms
 from resources.bitmaps import suncloud
 
-# For Esp32:    spi = 2, sck=Pin(18), mosi=Pin(23)
-# For Esp32-S2: spi = 2, sck=Pin(36), mosi=Pin(35)
-spi = SPI( 1, baudrate = 40_000_000, polarity = 1, phase = 1,
-           sck = Pin(12), mosi = Pin(11) ) # Example for s3
+# standart SPI dosn't work with dma
+piospi = PIO_SPI( sck = 10, mosi = 11 )
 
-# Set pins here
-CS_PIN  = 10 #s3
-DC_PIN  = 21
-RST_PIN = 14
-BLK_PIN = 17
+CS_PIN  = 13 #pico
+DC_PIN  = 20
+RST_PIN = 21
+BLK_PIN = 15 # Or None
 
-tft = ST7789_SPI_FB( spi, CS_PIN, DC_PIN,  RST_PIN, BLK_PIN,
-                     height = 320, width = 240, bgr = 0)
-#tft.invert_display( True )
+tft = ST7789_SPI_FB( piospi, CS_PIN, DC_PIN,  RST_PIN, BLK_PIN,
+                     height = 320, width = 240, bgr = 0, dma = True )
+#tft.invert_display( True ) # If the display doesn't work correctly: Try to set inversion
 
 SCREEN_WIDTH  = tft.width
 SCREEN_HEIGHT = tft.height
@@ -58,7 +55,7 @@ def rainbow( ):
 size = 16
 for y in range( SCREEN_HEIGHT // size ):
     for x in range(  SCREEN_WIDTH // size ):
-        tft.draw_bitmap(suncloud, x * size, y * size, COLOR_YELLOW)        
+        tft.draw_bitmap(suncloud, x * size, y * size, COLOR_CYAN)        
 tft.show()
 sleep_ms(500)
 

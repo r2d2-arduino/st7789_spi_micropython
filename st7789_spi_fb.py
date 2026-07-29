@@ -1,6 +1,6 @@
 """
-ST7789_SPI_FB v 0.1.7
-Display driver for ST7789 (with Framebuffer)
+ST7789_SPI_FB v 0.3.2
+Display driver for ST7789 ( with Framebuffer and DMA )
 
 Display: ST7789
 Connection: SPI
@@ -15,13 +15,13 @@ Author: Arthur Derkach
 
 from machine import Pin, PWM
 from time import sleep_ms
-from framebuf import FrameBuffer, RGB565
-from struct import pack
+from tft_draw.draw_fb_c16 import DRAW_FB_C16
 
-class ST7789_SPI_FB( FrameBuffer ):
+class ST7789_SPI_FB( DRAW_FB_C16 ):
     
     def __init__( self, spi, cs_pin, dc_pin, rst_pin, blk_pin = None,
-                    width = 240, height = 320, offset_x = 0, offset_y = 0 ):
+                  width = 240, height = 320, offset_x = 0, offset_y = 0,
+                  bgr = False, dma = False ):
         """ Constructor
         Args
         spi  (object): SPI
@@ -31,8 +31,10 @@ class ST7789_SPI_FB( FrameBuffer ):
         blk_pin (int): Backlight pin number
         width   (int): Screen width in pixels (less)
         height  (int): Screen height in pixels
+        bgr     (int): Color order: 0 = RGB, 1 = BGR
         offset_x(int): Offset X
         offset_y(int): Offset Y
+        dma (bool): Enable DMA ( for pico only )
         """        
         self.spi = spi
         self.cs  = Pin(cs_pin, Pin.OUT, value = 1)
@@ -40,28 +42,46 @@ class ST7789_SPI_FB( FrameBuffer ):
         self.rst = Pin(rst_pin, Pin.OUT, value = 1)
         self.blk = None
         
+        self.controller_name = self.read_controller_name()
+
         if blk_pin is not None:
             self.blk = Pin(blk_pin, Pin.OUT, value = 1)
             
             self.blk_pwm = PWM(self.blk)
             self.blk_pwm.freq( 2000 )
-            self.blk_pwm.duty( 1023 )
-
-        self.rotation = 0
+            
+            if self.controller_name == 'RP2':
+                self.blk_pwm.duty_u16( 65535 )
+            else:
+                self.blk_pwm.duty( 1023 )
         
         self.width  = width
         self.height = height
         
-        self.font = None
+        self.bgr = 0
+        if bgr:
+            self.bgr = 1
+            
+        self.rotation = 0
+        
+        self._font = None
         
         self.offset_x = offset_x
-        self.offset_y = offset_y        
+        self.offset_y = offset_y
         
-        # Buffer initialization
-        self.buffsize = width * height * 2
-        self.buffer = bytearray( self.buffsize )
+        # DMA section
+        self.dma_enabled = False
+        self.dma_is_running = False
         
-        super().__init__( self.buffer, self.width, self.height, RGB565 )        
+        if dma:
+            if self.controller_name == 'RP2':
+                self.dma_enabled = True
+                self.init_dma()
+            else:
+                print('DMA is supported only for RP2')
+                
+        # DRAW parent
+        super().__init__( self.width, self.height )       
         
         self.init()
 
@@ -69,7 +89,9 @@ class ST7789_SPI_FB( FrameBuffer ):
         """ Sending a command to the display
         Args
         cmd (int): Command number, example: 0x2E
-        """        
+        """
+        self.wait_dma()
+        
         self.dc.value(0)  # Устанавливаем DC в командный режим
         self.cs.value(0)
         self.spi.write( bytes([cmd]) )
@@ -79,7 +101,9 @@ class ST7789_SPI_FB( FrameBuffer ):
         """ Sending data to the display
         Args
         data (int): Data byte, example: 0xF8
-        """        
+        """
+        self.wait_dma()
+        
         self.dc.value(1)  
         self.cs.value(0)
         self.spi.write( data )
@@ -96,7 +120,12 @@ class ST7789_SPI_FB( FrameBuffer ):
         sleep_ms(150)
         
         self.write_command(0x3A)  # Pixel Format Set
-        self.write_data(bytes([0x55]))  # 16-bit color
+        if self.pixel_format == 12:
+            self.write_data(bytearray([0x44]))
+        elif self.pixel_format == 16:
+            self.write_data(bytearray([0x55]))
+        else: # 18 bit
+            self.write_data(bytearray([0x66]))
         
         self.write_command(0x20)  # Inversion OFF
         
@@ -112,6 +141,27 @@ class ST7789_SPI_FB( FrameBuffer ):
         self.rst.value(1)
         sleep_ms(120)    
     
+    @staticmethod
+    def read_controller_name():
+        from os import uname
+        
+        """ Reading controller name """
+        info = uname()
+        sysname = info.sysname
+
+        controller = 'Undefined'
+        if sysname == 'esp32':
+            if 'ESP32S3' in info.machine:
+                controller = 'ESP32-S3'
+            elif 'ESP32C3' in info.machine:
+                controller = 'ESP32-C3'
+            else:
+                controller = 'ESP32'
+        elif sysname == 'rp2':
+            controller = 'RP2'
+
+        return controller
+            
     def set_rotation( self, rotation = 0 ):
         """
         Set orientation of Display
@@ -122,32 +172,22 @@ class ST7789_SPI_FB( FrameBuffer ):
             print("Incorrect rotation value")
             return False
         
-        bgr = 0
-        
         old_rotation = self.rotation
         self.rotation = rotation
         if self.rotation == 0: # 0 deg
-            self.memory_access_control(0, 0, 0, 0, bgr, 0)
+            self.memory_access_control(0, 0, 0, 0, self.bgr, 0)
         elif self.rotation == 1: # 90 deg
-            self.memory_access_control(0, 1, 1, 0, bgr, 0)
+            self.memory_access_control(0, 1, 1, 0, self.bgr, 0)
         elif self.rotation == 2: # 180 deg
-            self.memory_access_control(1, 1, 0, 0, bgr, 0)
+            self.memory_access_control(1, 1, 0, 0, self.bgr, 0)
         elif self.rotation == 3: # 270 deg            
-            self.memory_access_control(1, 0, 1, 0, bgr, 0)
+            self.memory_access_control(1, 0, 1, 0, self.bgr, 0)
         
         # Change height <-> width for 90 and 270 degrees           
         if ( ((rotation & 1) and not (old_rotation & 1))
              or ((not (rotation & 1)) and (old_rotation & 1)) ):
             
-            height = self.height
-            self.height = self.width
-            self.width = height
-            
-            offset_buf = self.offset_x
-            self.offset_x = self.offset_y
-            self.offset_y = offset_buf            
-            
-            super().__init__(self.buffer, self.width, self.height, RGB565)
+            self.swap_dimensions()
 
     def memory_access_control( self, my = 0, mx = 0, mv = 0, ml = 0, bgr = 0, mh = 0 ):
         """ MADCTL. This command defines read/write scanning direction of frame memory. """
@@ -275,7 +315,10 @@ class ST7789_SPI_FB( FrameBuffer ):
         """
         if self.blk is not None:
             if 0 <= duty < 1024:
-                self.blk_pwm.duty(duty)
+                if self.controller_name == 'RP2':
+                    self.blk_pwm.duty_u16( duty * 64 )
+                else:
+                    self.blk_pwm.duty( duty )
             else:
                 print("Duty value out of range: 0..1023")
 
@@ -291,241 +334,94 @@ class ST7789_SPI_FB( FrameBuffer ):
         offx = int( self.offset_x )
         offy = int( self.offset_y )
         
-        dc = self.dc
-        spi = self.spi
+        x0 += offx
+        x1 += offx
         
-        dc.value( 0 ) # command mode
-        spi.write( b'\x2a' )
-        dc.value( 1 ) # data mode
-        spi.write( pack( ">HH", x0 + offx, x1 + offx ) )
+        y0 += offy
+        y1 += offy
         
-        dc.value( 0 ) # command mode
-        spi.write( b'\x2b' )
-        dc.value( 1 ) # data mode
-        spi.write( pack( ">HH", y0 + offy, y1 + offy ) )
+        dcon = self.dc.on
+        dcoff = self.dc.off
+        spwrite = self.spi.write
         
-        dc.value( 0 ) # command mode
-        spi.write( b'\x2c' )
-        dc.value( 1 )
+        dcoff( ) # command mode
+        spwrite( b'\x2a' )
+        dcon( ) # data mode
+        spwrite(bytearray([(x0 >> 8) & 0xff, x0 & 0xff, (x1 >> 8) & 0xff, x1 & 0xff]))
+        
+        dcoff( ) # command mode
+        spwrite( b'\x2b' )
+        dcon( ) # data mode
+        spwrite(bytearray([(y0 >> 8) & 0xff, y0 & 0xff, (y1 >> 8) & 0xff, y1 & 0xff]))
+        
+        dcoff( ) # command mode
+        spwrite( b'\x2c' )
+        dcon( )
 
-    """ IMAGE AREA """
+    def init_dma( self ):
+        ''' Create DMA'''
+        from rp2 import DMA
+        from machine import mem32
+        
+        mem32[0x50000000 + 0x464] = (
+            0x1  # aborting the channel seems to help restart DMA without a full power cycle
+        )
+        
+        while mem32[0x50000000 + 0x464] != 0:
+            continue
+        
+        self.dma = DMA()
+        self.dma_ctrl = self.dma.pack_ctrl(
+            size = 0,
+            inc_write = False,
+            irq_quiet = False,
+            treq_sel = 0,
+            bswap = True,
+        )
+        
+        self.dma.active(0)
     
-    @micropython.viper
-    def draw_raw_image( self, filename, x:int, y:int, width:int, height:int ):
-        """ Draw RAW image (RGB565 format) on display
-        Args
-        filename (string): filename of image, example: "rain.bmp"
-        x (int) : Start X position
-        y (int) : Start Y position
-        width (int) : Width of raw image
-        height (int) : Height of raw image
-        """
-        with open( filename, 'rb' ) as f:
-            buffer = ptr16( self.buffer )
-            screen_width = int( self.width )
-
-            for row in range( height ):
-                image_data = f.read( width * 2 )
-                image_buffer = ptr16( image_data )
-                offset = x + ( row + y ) * screen_width
-
-                col = 0
-                while col < width:
-                    buffer[ offset + col ] = image_buffer[ col ]
-                    col += 1
-
-        
-    def draw_bmp( self, filename, x = 0, y = 0 ):
-        """ Draw BMP image on display
-        Args
-        filename (string): filename of image, example: "rain.bmp"
-        x (int) : Start X position
-        y (int) : Start Y position
-        """
-        with open( filename, 'rb' ) as f:        
-            if f.read(2) == b'BM':  #header
-                dummy    = f.read(8) #file size(4), creator bytes(4)
-                offset   = int.from_bytes(f.read(4), 'little')
-                dummy    = f.read(4) #hdrsize
-                width    = int.from_bytes(f.read(4), 'little')
-                height   = int.from_bytes(f.read(4), 'little')
-                planes   = int.from_bytes(f.read(2), 'little')
-                depth    = int.from_bytes(f.read(2), 'little')
-                compress = int.from_bytes(f.read(4), 'little')
-
-                if planes == 1 and depth == 24 and compress == 0: #compress method == uncompressed
-                    rowsize = (width * 3 + 3) & ~3
-                    
-                    if height < 0:
-                        height = -height
-
-                    frameWidth, frameHeight = width, height
-                    
-                    if x + frameWidth > self.width:
-                        frameWidth = self.width - x
-                        
-                    if y + frameHeight > self.height:
-                        frameHeight = self.height - y
-
-                    f.seek(offset)
-                    
-                    self._send_bmp_to_framebuff(f, x, y, frameHeight, frameWidth, offset, rowsize)
-
+    def wait_dma(self):
+        """ Blocks execution until the DMA has finished transmitting the current frame """
+        if self.dma_is_running:
+            while self.dma.active():
+                pass
             
-    @micropython.viper           
-    def _send_bmp_to_framebuff( self, f, x: int, y: int, frameHeight: int, frameWidth: int, offset: int, rowsize: int ):
-        """ Send bmp-file to display
-        Args
-        f (object File) : Image file
-        frameHeight (int): Height of image frame
-        frameWidth (int): Width of image frame
-        offset (int): Internal byte offset of image-file
-        rowsize (int): Internal byte rowsize of image-file        
-        """
-        buffer = ptr16(self.buffer)
-        screen_width = int(self.width)
-        buffsize = int(self.buffsize) // 2
-        main_offset = buffsize - y * screen_width - frameWidth - x
-        
-        for row in range(frameHeight):
-            buff_offset = main_offset - row * screen_width
-            # Start position of new row in image-file
-            pos = offset + row * rowsize
-                                    
-            if int(f.tell()) != pos:
-                f.seek(pos)
-            
-            # Reading one row from image-file
-            bgr_row = f.read( frameWidth * 3 )
-            image_buffer = ptr8( bgr_row )
-            
-            for col in range( frameWidth ):
-                #Getting color bytes
-                red   = image_buffer[ col * 3     ]
-                green = image_buffer[ col * 3 + 1 ]
-                blue  = image_buffer[ col * 3 + 2 ]
-                
-                buffer[ buff_offset + col ] = (green & 0x1C) << 11 |  ((red & 0xF8) << 5 | (blue & 0xF8)) | (green & 0xE0) >> 5
-        
-    """ TEXT AREA """
-        
-    def set_font( self, font ):
-        """ Set font for text
-        Args
-        font (module): Font module generated by font_to_py.py
-        """
-        self.font = font
-        
-    def draw_text( self, text, x, y, color ):
-        """ Draw text on display
-        Args
-        x (int) : Start X position
-        y (int) : Start Y position
-        color (int): RGB565 2-byte color, example 0xF81F
-        """
-        x_start = x
-        screen_height = self.height
-        screen_width = self.width
-        
-        
-        font = self.font        
-        if font == None:
-            print("Font not set")
-            return False
-        
-        for char in text:
-            if char == "\n": # New line
-                x = screen_width
-                continue
-            
-            if char == "\t": #replace tab to space
-                char = " "
-            
-            glyph = font.get_ch(char)
-            glyph_height = glyph[1]
-            glyph_width = glyph[2]
-            
-            if char == " ": # double size for space
-                x += glyph_width
-                
-            if x + glyph_width > screen_width:
-                x = x_start
-                y += glyph_height
-                
-            if y + glyph_height > screen_height: # End of screen
-                break                
-  
-            self.draw_bitmap(glyph, x, y, color)
-            x += glyph_width              
-                
-    @micropython.viper
-    def draw_bitmap( self, bitmap, x:int, y:int, color:int ):
-        """ Draw one bitmap (glyph) on display
-        Args
-        bitmap (tuple) : Bitmap data [data, height, width]
-        x (int) : Start X position
-        y (int) : Start Y position
-        color (int): RGB565 2-byte color, example 0xF81F
-        """
-        data   = ptr8(bitmap[0]) #memoryview of bitmap
-        height = int(bitmap[1])
-        width  = int(bitmap[2])
-        screen_width  = int(self.width)
-        
-        buffer = ptr8(self.buffer)
-        
-        color_hi  = color & 0xFF
-        color_low = (color >> 8) & 0xFF
-        
-        i = 0
-        for h in range(height):
-            ypos = (h + y) * screen_width * 2
-
-            bit_len = 0
-            while bit_len < width:
-                byte = data[i]
-                pos = ypos + (bit_len + x) * 2
-                #Drawing pixels when bit = 1
-                if (byte >> 7) & 1:                    
-                    buffer[ pos     ] = color_hi
-                    buffer[ pos + 1 ] = color_low        
-                if (byte >> 6) & 1:                   
-                    buffer[ pos + 2 ] = color_hi
-                    buffer[ pos + 3 ] = color_low                    
-                if (byte >> 5) & 1:                    
-                    buffer[ pos + 4 ] = color_hi
-                    buffer[ pos + 5 ] = color_low                      
-                if (byte >> 4) & 1:                    
-                    buffer[ pos + 6 ] = color_hi
-                    buffer[ pos + 7 ] = color_low                    
-                if (byte >> 3) & 1:                    
-                    buffer[ pos + 8 ] = color_hi
-                    buffer[ pos + 9 ] = color_low                     
-                if (byte >> 2) & 1:                    
-                    buffer[ pos + 10 ] = color_hi
-                    buffer[ pos + 11 ] = color_low                     
-                if (byte >> 1) & 1:                    
-                    buffer[ pos + 12 ] = color_hi
-                    buffer[ pos + 13 ] = color_low                     
-                if byte & 1:                    
-                    buffer[ pos + 14 ] = color_hi
-                    buffer[ pos + 15 ] = color_low                     
-                
-                bit_len += 8
-                i += 1
-    
-    
-    @staticmethod
-    @micropython.viper
-    def color565( red:int, green:int, blue:int ) -> int:
-        """ Convert 8,8,8 bits RGB to 16 bits  """
-        return ( (green & 0x1c) << 11 | (blue & 0xf8) << 5 | (red & 0xf8) | (green & 0xe0) >> 5 )
+            self.cs.value(1)
+            self.dma_is_running = False
 
     def show( self ):
+        ''' Displays the contents of the buffer on the screen '''
+        if self.dma_enabled:
+            self.show_dma()
+        else:
+            self.show_fb()
+        
+    def show_fb( self ):
         ''' Displays the contents of the buffer on the screen '''
         self.cs.value(0)
         
         self.set_window( 0, 0, self.width - 1, self.height - 1)
         self.spi.write( self.buffer )
         
-        self.cs.value(1)
+        self.cs.value(1)        
+        
+    def show_dma(self):
+        """ Sending a buffer via DMA without blocking the processor """
+        self.wait_dma() #Make sure the bus is free
+        
+        self.cs.value(0)
+        self.set_window(0, 0, self.width - 1, self.height - 1)
+        
+        # Configuring DMA
+        self.dma.config(
+            read = self.buffer,
+            write = self.spi.display_machine,
+            count = self.buffsize,
+            ctrl = self.dma_ctrl,
+            trigger=True,
+        )
+
+        # Starting background transfer
+        self.dma_is_running = True
+        self.dma.active(1)

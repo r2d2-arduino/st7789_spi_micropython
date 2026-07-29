@@ -1,35 +1,36 @@
-from machine import SPI
+from machine import SPI, Pin
 from st7789_spi import ST7789_SPI
-import LibreBodoni24 as bigFont
+import resources.LibreBodoni24 as bigFont
 import time
-from bitmaps import suncloud
+from resources.bitmaps import suncloud
 
-# For Esp32:    sck=Pin(18), mosi=Pin(23), miso=Pin(19)
-# For Esp32-S2: sck=Pin(36), mosi=Pin(35), miso=Pin(37)
-# If the display doesn't work: try changing the polarity and phase to 0
-spi = SPI( 2, baudrate = 20_000_000, polarity = 1, phase = 1 )
+# For Esp32:    spi = 2, sck=Pin(18), mosi=Pin(23)
+# For Esp32-S2: spi = 2, sck=Pin(36), mosi=Pin(35)
+spi = SPI( 1, baudrate = 40_000_000, polarity = 1, phase = 1,
+           sck = Pin(12), mosi = Pin(11) ) # Example for s3
 
 # Set pins here
-CS_PIN  = 1
-DC_PIN  = 2
-RST_PIN = 4
-BLK_PIN = 6 # Set to None if the display doesn't have a backlight pin
+CS_PIN  = 10 #s3
+DC_PIN  = 21
+RST_PIN = 14
+BLK_PIN = 17
 
-tft = ST7789_SPI( spi, CS_PIN, DC_PIN,  RST_PIN, BLK_PIN, height = 320, width = 240)
-#tft.invert_display( True ) # If the display doesn't work correctly: Try to set inversion
+tft = ST7789_SPI( spi, CS_PIN, DC_PIN,  RST_PIN, BLK_PIN,
+                  height = 320, width = 240, bgr = 0)
+#tft.invert_display( True )
 
 SCREEN_WIDTH  = tft.width
 SCREEN_HEIGHT = tft.height
 
-COLOR_BLACK   = tft.color565( 0, 0, 0 )
-COLOR_BLUE    = tft.color565( 0, 0, 255 )
-COLOR_RED     = tft.color565( 255, 0, 0 )
-COLOR_GREEN   = tft.color565( 0, 255, 0 )
-COLOR_CYAN    = tft.color565( 0, 255, 255 )
-COLOR_MAGENTA = tft.color565( 255, 0, 255 )
-COLOR_YELLOW  = tft.color565( 255, 255, 0 )
-COLOR_WHITE   = tft.color565( 255, 255, 255 )
-COLOR_GRAY    = tft.color565( 112, 160, 112 )
+COLOR_BLACK   = tft.rgb( 0, 0, 0 )
+COLOR_BLUE    = tft.rgb( 0, 0, 255 )
+COLOR_RED     = tft.rgb( 255, 0, 0 )
+COLOR_GREEN   = tft.rgb( 0, 255, 0 )
+COLOR_CYAN    = tft.rgb( 0, 255, 255 )
+COLOR_MAGENTA = tft.rgb( 255, 0, 255 )
+COLOR_YELLOW  = tft.rgb( 255, 255, 0 )
+COLOR_WHITE   = tft.rgb( 255, 255, 255 )
+COLOR_GRAY    = tft.rgb( 112, 160, 112 )
 
 tft.set_font(bigFont)
 tft.tearing_effect()
@@ -47,47 +48,36 @@ for i in range(len(colors)):
 
 #red gradient
 for y in range(0, 32):
-    color = tft.color565( y * 8, 0, 0 )
+    color = tft.rgb( y * 8, 0, 0 )
     tft.fill_rect(0, y * 10, SCREEN_WIDTH, 10, color)    
 time.sleep_ms(500)
 
 #green gradient
 for y in range(0, 32):
-    color = tft.color565( 0, y * 8, 0 )
+    color = tft.rgb( 0, y * 8, 0 )
     tft.fill_rect(0, y * 10, SCREEN_WIDTH, 10, color)
 time.sleep_ms(500)
 
 #blue gradient
 for y in range(0, 32):
-    color = tft.color565( 0, 0, y * 8 )
+    color = tft.rgb( 0, 0, y * 8 )
     tft.fill_rect(0, y * 10, SCREEN_WIDTH, 10, color)
 time.sleep_ms(500)
 
 def rainbow( ):
     #red
     for y in range(0, 32):
-        color = tft.color565( y * 6 + 64, 0, 0 )
-        tft.fill_rect(0, y * 2, SCREEN_WIDTH, 2, color)
-    
-    #red-green
-    for y in range(0, 32):
-        color = tft.color565(  y * 6 + 64, y * 6 + 64, 0 )
-        tft.fill_rect(0, y * 2 + 64, SCREEN_WIDTH, 2, color)
-    
-    #green
-    for y in range(0, 32):
-        color = tft.color565(  0, y * 6 + 64, 0 )
-        tft.fill_rect(0, y* 2 + 128, SCREEN_WIDTH, 2, color)
-
-    #blue
-    for y in range(0, 32):
-        color = tft.color565(  0, 0, y * 6 + 64 )
-        tft.fill_rect(0, y * 2 + 192, SCREEN_WIDTH, 2, color)
+        red = tft.rgb( y * 6 + 64, 0, 0 )
+        yellow = tft.rgb(  y * 6 + 64, y * 6 + 64, 0 )
+        green = tft.rgb(  0, y * 6 + 64, 0 )
+        blue = tft.rgb(  0, 0, y * 6 + 64 )
+        purple = tft.rgb( y * 6 + 64, 0, y * 6 + 64 )
         
-    #red-blue
-    for y in range(0, 32):
-        color = tft.color565( y * 6 + 64, 0, y * 6 + 64 )
-        tft.fill_rect(0, y * 2 + 256, SCREEN_WIDTH, 2, color)
+        tft.fill_rect(0, y * 2,       SCREEN_WIDTH, 2, red)
+        tft.fill_rect(0, y * 2 + 64,  SCREEN_WIDTH, 2, yellow)
+        tft.fill_rect(0, y * 2 + 128, SCREEN_WIDTH, 2, green)
+        tft.fill_rect(0, y * 2 + 192, SCREEN_WIDTH, 2, blue)
+        tft.fill_rect(0, y * 2 + 256, SCREEN_WIDTH, 2, purple)
 
 text = "	Lorem ipsum dolor sit amet,\n consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.\n\
         Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\n Duis aute irure dolor\
@@ -115,6 +105,8 @@ tft.draw_text(text, 10, 20, COLOR_WHITE, COLOR_BLACK)
 time.sleep_ms(500)
 
 rainbow()
+time.sleep_ms(500)
+
 tft.vert_scroll(0, tft.height, 0)
 for _ in range(3):
     for line in range(SCREEN_HEIGHT):

@@ -1,20 +1,17 @@
-from machine import SPI, Pin
 from st7789_spi_fb import ST7789_SPI_FB
+from pio_spi import PIO_SPI
 
-# For Esp32:    spi = 2, sck=Pin(18), mosi=Pin(23)
-# For Esp32-S2: spi = 2, sck=Pin(36), mosi=Pin(35)
-spi = SPI( 1, baudrate = 40_000_000, polarity = 1, phase = 1,
-           sck = Pin(12), mosi = Pin(11) ) # Example for s3
+# standart SPI dosn't work with dma
+piospi = PIO_SPI( sck = 10, mosi = 11 )
 
-# Set pins here
-CS_PIN  = 10 #s3
-DC_PIN  = 21
-RST_PIN = 14
-BLK_PIN = 17
+CS_PIN  = 13 #pico
+DC_PIN  = 20
+RST_PIN = 21
+BLK_PIN = 15 # Or None
 
-tft = ST7789_SPI_FB( spi, CS_PIN, DC_PIN,  RST_PIN, BLK_PIN,
-                     height = 320, width = 240, bgr = 0)
-#tft.invert_display( True )
+tft = ST7789_SPI_FB( piospi, CS_PIN, DC_PIN,  RST_PIN, BLK_PIN,
+                     height = 320, width = 240, bgr = 0, dma = True )
+#tft.invert_display( True ) 
 
 def file_exists(filename):
     import os
@@ -28,6 +25,7 @@ def file_exists(filename):
 tft.set_rotation(0)  # 0..3 - Rotates the screen
 tft.fill(0x0000) # Fill the screen with black color
 
+
 filename = 'resources/road240x320.raw'
 if file_exists(filename):
     import time
@@ -39,3 +37,4 @@ if file_exists(filename):
 #s2    352? ms
 #s3m8  183
 #pico2 70
+#dma   20 + 20 = 40

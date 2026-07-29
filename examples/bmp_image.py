@@ -1,19 +1,20 @@
-from machine import SPI
+from machine import SPI, Pin
 from st7789_spi import ST7789_SPI
 
-# For Esp32:    sck=Pin(18), mosi=Pin(23), miso=Pin(19)
-# For Esp32-S2: sck=Pin(36), mosi=Pin(35), miso=Pin(37)
-# If the display doesn't work: try changing the polarity and phase to 0
-spi = SPI( 2, baudrate = 20_000_000, polarity = 1, phase = 1 )
+# For Esp32:    spi = 2, sck=Pin(18), mosi=Pin(23)
+# For Esp32-S2: spi = 2, sck=Pin(36), mosi=Pin(35)
+spi = SPI( 1, baudrate = 40_000_000, polarity = 1, phase = 1,
+           sck = Pin(12), mosi = Pin(11) ) # Example for s3
 
 # Set pins here
-CS_PIN  = 1
-DC_PIN  = 2
-RST_PIN = 4
-BLK_PIN = 6 # Set to None if the display doesn't have a backlight pin
+CS_PIN  = 10 #s3
+DC_PIN  = 21
+RST_PIN = 14
+BLK_PIN = 17
 
-tft = ST7789_SPI( spi, CS_PIN, DC_PIN,  RST_PIN, BLK_PIN, height = 320, width = 240)
-#tft.invert_display( True ) # If the display doesn't work correctly: Try to set inversion
+tft = ST7789_SPI( spi, CS_PIN, DC_PIN,  RST_PIN, BLK_PIN,
+                  height = 320, width = 240, bgr = 0)
+#tft.invert_display( True )
 
 def file_exists(filename):
     import os
@@ -27,7 +28,7 @@ def file_exists(filename):
 tft.set_rotation(0)  # 0..3 - Rotates the screen clockwise
 tft.fill_screen(0x0000) # Fill the screen with black color
 
-filename = 'images/grass240x320.bmp'
+filename = 'resources/grass240x320.bmp'
 
 if file_exists(filename):
     import time
@@ -37,3 +38,6 @@ if file_exists(filename):
 
     print((time.ticks_ms()-start), 'ms')
 
+#esp32 658 ms
+#s3m8  483
+#pico2 274
