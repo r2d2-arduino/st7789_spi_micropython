@@ -42,7 +42,3 @@ tft.fill( tft.color565( 255, 0, 0 ) ) # Fills the entire screen with red
 * **scroll ( delay = 5 )** - Scrolling on the screen at a given speed.
 * **set_backlight ( duty = 1023 )** - Set Backlight PWM Pin: 0 - Backlight Off; 1023 - Backlight Max.
 * **show ( )** - Displays the contents of the buffer on the screen ( st7789_spi_fb only ).
-
-## Tools
-* **tools / font_to_py.py** - Used to convert ttf font to py-script. First of all, you need to install: `pip install freetype-py`. Then run a command similar to the example: `python font_to_py.py -x LibreBodoni-Bold.ttf 24 LibreBodoni24.py`. More details: https://github.com/peterhinch/micropython-font-to-py
-* **tools / img2rgb565.py** - Used to convert BMP-image to RAW RGB565 format. Usage: `python img2rgb565.py <your_image>`. Raw images load faster and use less memory.
