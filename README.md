@@ -13,7 +13,7 @@ MicroPython driver for ST7789 SPI displays.
 
 ## Dependencies:
 The main libraries inherit from the graphics libraries tft_draw:
-https://github.com/r2d2-arduino/tft_draw_mpy
+https://github.com/r2d2-arduino/tft_draw
 
 ## Minimum code to run:
 ```python
