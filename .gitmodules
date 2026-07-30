@@ -1,0 +1,3 @@
+[submodule "tft_draw"]
+	path = tft_draw
+	url = https://github.com/r2d2-arduino/tft_draw.git
