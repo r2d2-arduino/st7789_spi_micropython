@@ -10,6 +10,7 @@ MicroPython driver for ST7789 SPI displays.
 * **resources/** - related files for examples.
 * **st7789_spi.py** - Main library ST7789_SPI with direct draw.
 * **st7789_spi_fb.py** - Main library ST7789_SPI_FB. Framebuffer and DMA version.
+* **st7789_spi_base.py** - Base library for ST7789_SPI and ST7789_SPI_FB.
 
 ## Dependencies:
 The main libraries inherit from the graphics libraries tft_draw:
