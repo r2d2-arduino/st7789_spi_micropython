@@ -32,7 +32,7 @@ BLK_PIN = 17 # Set to None if the display doesn't have a backlight pin
 
 tft = ST7789_SPI( spi, CS_PIN, DC_PIN, RST_PIN, BLK_PIN )
 
-tft.fill( tft.color565( 255, 0, 0 ) ) # Fills the entire screen with red
+tft.fill( tft.rgb( 255, 0, 0 ) ) # Fills the entire screen with red
 ```
 
 ## Display functions:
